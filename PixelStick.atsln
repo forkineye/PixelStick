@@ -1,0 +1,20 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Atmel Studio Solution File, Format Version 11.00
+Project("{54F91283-7BC4-4236-8FF9-10F437C3AD48}") = "PixelStick", "PixelStick\PixelStick.cproj", "{904FD1C6-66EB-4563-897B-C6413BA1E4A5}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|AVR = Debug|AVR
+		Release|AVR = Release|AVR
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{904FD1C6-66EB-4563-897B-C6413BA1E4A5}.Debug|AVR.ActiveCfg = Debug|AVR
+		{904FD1C6-66EB-4563-897B-C6413BA1E4A5}.Debug|AVR.Build.0 = Debug|AVR
+		{904FD1C6-66EB-4563-897B-C6413BA1E4A5}.Release|AVR.ActiveCfg = Release|AVR
+		{904FD1C6-66EB-4563-897B-C6413BA1E4A5}.Release|AVR.Build.0 = Release|AVR
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
