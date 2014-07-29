@@ -24,9 +24,9 @@
 /* USER Defined Defaults                         */
 /*************************************************/
 //TODO: Add error checking and status LED feedback for verification of these values
-#define PIXEL_NUM 28				/* default number of pixels */
-#define PIXEL_SIZE 3				/* default number of channels per pixel */
-#define CHANNEL_START 0				/* default start channel */
+#define PIXEL_NUM 28                /* default number of pixels */
+#define PIXEL_SIZE 3                /* default number of channels per pixel */
+#define CHANNEL_START 0             /* default start channel */
 #define NRF_CHANNEL 100             /* default nRF channel */
 #define NRF_RATE    XNRF_250KBPS    /* default nRF data rate */
 
@@ -53,15 +53,12 @@
  *                    |____________ RESERVED - Only '0' allowed
  */
 
-/* XUSART Configurations */
-//#define USART_BAUDRATE  100000	
-
 /* RFShowControl Protocol */
-#define RFSC_FRAME	30	/* Offset for FRAME byte in RFSC Protocol */
-#define RFSC_CMD	31	/* Offset for COMMAND byte - proposed */ 
+#define RFSC_FRAME  30  /* Offset for FRAME byte in RFSC Protocol */
+#define RFSC_CMD    31  /* Offset for COMMAND byte - proposed */ 
 
 /* WS2811 */
-#define WS2811_BAUDRATE	800000
-#define WS2811_RESET	_delay_us(50)
+#define WS2811_BAUDRATE 800000
+#define WS2811_RESET    _delay_us(50)
 
 #endif /* CONFIG_H_ */
