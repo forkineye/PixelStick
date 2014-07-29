@@ -61,7 +61,6 @@ static inline void xusart_enable_rx(USART_t *usart) {
     usart->CTRLB |= USART_RXEN_bm;
 }     
 
-
 /*! \brief Disable USART receiver.
  *  \param usart Pointer to the USART module.
  */
@@ -69,14 +68,12 @@ static inline void xusart_disable_rx(USART_t *usart) {
     usart->CTRLB &= ~USART_RXEN_bm;
 }     
 
-
 /*! \brief Enable USART transmitter.
  *  \param usart Pointer to the USART module.
  */
 static inline void xusart_enable_tx(USART_t *usart) {
     usart->CTRLB |= USART_TXEN_bm;
 }    
-
 
 /*! \brief Disable USART transmitter.
  *  \param _usart Pointer to the USART module.
@@ -151,6 +148,7 @@ static inline void xusart_get_buffer(USART_t *usart, RingBuff_t *buffer, uint8_t
         RingBuffer_Insert(buffer, xusart_getchar(usart));
 }
 
+
 /************************************************************************/
 /* CALLED FUNCTIONS                                                     */
 /************************************************************************/
@@ -179,5 +177,85 @@ void xusart_init(xusart_config_t *config);
  *               either too high or too low.)
  */
 bool xusart_set_baudrate(USART_t *usart, uint32_t baud, uint32_t cpu_hz);
+
+
+/************************************************************************/
+/* USART SPI Master stuff                                               */
+/************************************************************************/
+#ifndef USART_UDORD_bm
+#	define USART_UDORD_bm USART_CHSIZE2_bm
+#endif
+
+#ifndef USART_UCPHA_bm
+#	define USART_UCPHA_bm USART_CHSIZE1_bm
+#endif
+
+
+
+/*! \brief Blocking call that sends and returns a single byte.
+ *  \param usart    Pointer to USART_t module structure.
+ *  \param val      Byte to send.
+ *  \return         Single byte read from SPI.
+ */
+static inline uint8_t xusart_spi_transfer_byte(USART_t *usart, uint8_t val) {
+    usart->DATA = val;
+    while(!(usart->STATUS & USART_TXCIF_bm));
+    usart->STATUS = USART_TXCIF_bm;
+    return usart->DATA;
+}
+
+/*! \brief Blocking call that sends a single buffered byte.
+ *  \param usart    Pointer to USART_t module structure.
+ *  \param val      Byte to send.
+ */
+static inline void xusart_spi_send_byte(USART_t *usart, uint8_t val) {
+    while (!(usart->STATUS & USART_DREIF_bm));
+    usart->DATA = val;
+}
+
+/*! \brief Blocking call that retrieves a single byte.
+ *  \param usart    Pointer to USART_t module structure.
+ *  \return         Next byte from the UART
+ */
+static inline uint8_t xusart_spi_get_byte(USART_t *usart) {
+    return xusart_spi_transfer_byte(usart, 0xFF);
+}
+
+/*! \brief Sends a packet of data via UART in Master SPI mode.
+ *  \param usart    Pointer to USART_t module structure.
+ *  \param data     Pointer to a buffer to store the retrieved data.
+ *  \param len      Size of the buffer in bytes.
+ */
+static inline void xusart_spi_send_packet(USART_t *usart, uint8_t *data, uint8_t len) {
+    while (len--)
+		xusart_spi_send_byte(usart, *data++);
+}
+
+/*! \brief Retrieves a packet of data via UART in Master SPI mode.
+ *  \param usart    Pointer to USART_t module structure.
+ *  \param data     Pointer to a buffer to store the retrieved data.
+ *  \param len      Size of the buffer in bytes.
+ */
+static inline void xusart_spi_get_packet(USART_t *usart, uint8_t *data, uint8_t len) {
+    while (len--)
+		*data++ = xusart_spi_get_byte(usart);
+}
+
+/*! \brief SPI Master USART initialization function.
+ *  \param config         Pointer to the port on which this SPI module resides.
+ *  \param mode         Clock and polarity mode for SPI.
+ */
+void xusart_spi_init(xusart_config_t *config, SPI_MODE_t mode);
+
+/*!
+ * \brief Sets the USART baudrate when in Master SPI mode
+  * \param usart The USART module.
+ * \param baud The baudrate.
+ * \param cpu_hz The CPU frequency.
+ *
+ * \retval true if requested baudrate could be set
+ * \retval false if requested baudrate is too high
+ */
+bool xusart_spi_set_baudrate(USART_t *usart, uint32_t baud, uint32_t cpu_hz);
 
 #endif /* XUSART_H_ */

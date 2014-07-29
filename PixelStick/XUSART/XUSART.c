@@ -114,3 +114,27 @@ bool xusart_set_baudrate(USART_t *usart, uint32_t baud, uint32_t cpu_hz) {
 	return true;
 }
 
+/************************************************************************/
+/* SPI Master stuff                                                     */
+/************************************************************************/
+void xusart_spi_init(xusart_config_t *config, SPI_MODE_t mode) {
+	config->usart->CTRLC = (USART_CMODE_MSPI_gc | mode);
+}
+
+bool xusart_spi_set_baudrate(USART_t *usart, uint32_t baud, uint32_t cpu_hz) {
+	uint16_t bsel_value;
+	bool retval = false;
+
+	/* Baud rate can be no greater than half our CPU frequency */
+	if (baud < (cpu_hz / 2)) {
+		bsel_value = (cpu_hz / (baud * 2)) - 1;
+		retval = true;
+	} else {
+		bsel_value = 0;
+	}
+	
+	(usart)->BAUDCTRLB = (uint8_t)((~USART_BSCALE_gm) & (bsel_value >> 8));
+	(usart)->BAUDCTRLA = (uint8_t)(bsel_value);
+	
+	return retval;
+}
