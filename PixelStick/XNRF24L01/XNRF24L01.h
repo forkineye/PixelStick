@@ -22,7 +22,9 @@
 
 #include "../config.h"
 #include <util/delay.h>
-#include "../RingBuffer.h"
+#ifdef RINGBUFFER
+#   include "../RingBuffer.h"
+#endif
 #include "../XSPI/XSPI.h"
 #include "nRF24L01.h"
 
@@ -241,18 +243,20 @@ static inline void xnrf_read_payload(xnrf_config_t *config, volatile uint8_t *da
     xnrf_deselect(config);
 }
 
-/*! \brief Retrieves a payload.
- *  \param config   Pointer to a xnrf_config_t structure.
- *  \param buffer   Pointer to a RingBuffer structure to hold our data.
- *  \param len      Length of the payload you're retrieving.
- */
-static inline void xnrf_read_payload_buffer(xnrf_config_t *config, RingBuff_t *buffer, uint8_t len) {
-    xnrf_select(config);
-    xspi_transfer_byte(config->spi, R_RX_PAYLOAD);
-    while (len--)
-        RingBuffer_Insert(buffer, xspi_transfer_byte(config->spi, NRF_NOP));
-    xnrf_deselect(config);
-}
+#ifdef RINGBUFFER
+    /*! \brief Retrieves a payload.
+     *  \param config   Pointer to a xnrf_config_t structure.
+     *  \param buffer   Pointer to a RingBuffer structure to hold our data.
+     *  \param len      Length of the payload you're retrieving.
+     */
+    static inline void xnrf_read_payload_buffer(xnrf_config_t *config, RingBuffer_t *buffer, uint8_t len) {
+        xnrf_select(config);
+        xspi_transfer_byte(config->spi, R_RX_PAYLOAD);
+        while (len--)
+            RingBuffer_Insert(buffer, xspi_transfer_byte(config->spi, NRF_NOP));
+        xnrf_deselect(config);
+    }
+#endif
 
 /*! \brief Writes a payload to be transmitted.
  *  \param config   Pointer to a xnrf_config_t structure.
@@ -267,18 +271,20 @@ static inline void xnrf_write_payload(xnrf_config_t *config, uint8_t *data, uint
     xnrf_deselect(config);
 }
 
-/*! \brief Writes a payload to be transmitted.
- *  \param config   Pointer to a xnrf_config_t structure.
- *  \param buffer   Pointer to a RingBuffer structure that holds our data.
- *  \param len      Size of the payload we are sending.
- */
-static inline void xnrf_write_payload_buffer(xnrf_config_t *config, RingBuff_t *buffer, uint8_t len) {
-    xnrf_select(config);
-    xspi_transfer_byte(config->spi, W_TX_PAYLOAD);
-    while (len--)
-        xspi_transfer_byte(config->spi, RingBuffer_Remove(buffer));
-    xnrf_deselect(config);
-}
+#ifdef RINGBUFFER
+    /*! \brief Writes a payload to be transmitted.
+     *  \param config   Pointer to a xnrf_config_t structure.
+     *  \param buffer   Pointer to a RingBuffer structure that holds our data.
+     *  \param len      Size of the payload we are sending.
+     */
+    static inline void xnrf_write_payload_buffer(xnrf_config_t *config, RingBuffer_t *buffer, uint8_t len) {
+        xnrf_select(config);
+        xspi_transfer_byte(config->spi, W_TX_PAYLOAD);
+        while (len--)
+            xspi_transfer_byte(config->spi, RingBuffer_Remove(buffer));
+        xnrf_deselect(config);
+    }
+#endif
 
 /*! \brief Writes a payload to be transmitted, explicitly disabling ACKs.
  *  \note Use this if you need to send packets w/o ACKs when configured to receive dynamic payloads.
@@ -294,19 +300,21 @@ static inline void xnrf_write_payload_noack(xnrf_config_t *config, uint8_t *data
     xnrf_deselect(config);
 }
 
-/*! \brief Writes a payload to be transmitted, explicitly disabling ACKs.
- *  \note Use this if you need to send packets w/o ACKs when configured to receive dynamic payloads.
- *  \param config   Pointer to a xnrf_config_t structure.
- *  \param buffer   Pointer to a RingBuffer structure that holds our data.
- *  \param len      Size of the payload we are sending.
- */
-static inline void xnrf_write_payload_buffer_noack(xnrf_config_t *config, RingBuff_t *buffer, uint8_t len) {
-    xnrf_select(config);
-    xspi_transfer_byte(config->spi, W_TX_PAYLOAD_NOACK);
-    while (len--)
-        xspi_transfer_byte(config->spi, RingBuffer_Remove(buffer));
-    xnrf_deselect(config);
-}
+#ifdef RINGBUFFER
+    /*! \brief Writes a payload to be transmitted, explicitly disabling ACKs.
+     *  \note Use this if you need to send packets w/o ACKs when configured to receive dynamic payloads.
+     *  \param config   Pointer to a xnrf_config_t structure.
+     *  \param buffer   Pointer to a RingBuffer structure that holds our data.
+     *  \param len      Size of the payload we are sending.
+     */
+    static inline void xnrf_write_payload_buffer_noack(xnrf_config_t *config, RingBuffer_t *buffer, uint8_t len) {
+        xnrf_select(config);
+        xspi_transfer_byte(config->spi, W_TX_PAYLOAD_NOACK);
+        while (len--)
+            xspi_transfer_byte(config->spi, RingBuffer_Remove(buffer));
+        xnrf_deselect(config);
+    }
+#endif
 
 /*! \brief Sets the TX Address.
  *  \param config   Pointer to a xnrf_config_t structure.

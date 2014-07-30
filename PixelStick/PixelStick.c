@@ -17,8 +17,6 @@
  *
  */ 
 
-
-
 #include "config.h"
 #include <avr/io.h>
 #include <avr/interrupt.h>
@@ -27,7 +25,6 @@
 #include <string.h>
 #include "XUSART/XUSART.h"
 #include "XNRF24L01/XNRF24L01.h"
-#include "renard.h"
 
 #define STATUS_LED_ON   PORTA.OUTSET = PIN5_bm
 #define STATUS_LED_OFF  PORTA.OUTCLR = PIN5_bm
@@ -66,13 +63,13 @@ xusart_config_t xusart_config = {
     .tx_pin = 3
 };
 
-uint64_t    addr_p0 = ADDR_P0;                          /* default nRF address for TX and Pipe 0 RX */
-uint64_t    addr_p1 = ADDR_P1;                          /* default nRF address for Pipe 1 RX */    
-volatile uint8_t rxbuff[32];                            /* Packet buffer */
-volatile uint8_t unibuff[512];                          /* Universe buffer */
-volatile uint8_t offset = 0;                            /* Universe buffer offset */
-volatile uint16_t channels = PIXEL_NUM * PIXEL_SIZE;    /* Total number of channels */
-volatile bool	DFLAG = false;                          /* Data-Ready flag */
+uint64_t    addr_p0 = ADDR_P0;      /* default nRF address for TX and Pipe 0 RX */
+uint64_t    addr_p1 = ADDR_P1;      /* default nRF address for Pipe 1 RX */    
+volatile uint8_t rxbuff[32];        /* Packet buffer */
+volatile uint8_t unibuff[512];      /* Universe buffer */
+volatile uint16_t channel_start;    /* Start channel for this PixelStick */
+volatile uint16_t channel_count;    /* Total number of channels */
+pixel_type_t pixel_type;            /* Pixel Type */
 
 /* Initialize the board */
 void init() {
@@ -93,12 +90,21 @@ void init() {
 	//TODO: Pull buffer enable low.  Don't need on new boards
 	PORTD.DIRSET = PIN2_bm;
 	PORTD.OUTCLR = PIN2_bm;
+    
+    //TODO: Load configuration from EEPROM here. For now, use defaults from config.h
+    uint8_t nrf_channel = NRF_CHANNEL;
+    uint8_t nrf_rate = NRF_RATE;
+    uint8_t pixel_num = PIXEL_NUM;
+    uint8_t pixel_size = PIXEL_SIZE;
+    pixel_type = PIXEL_TYPE;
+    channel_start = CHANNEL_START;
+    channel_count = pixel_num * pixel_size;
 	
 	// Configure the DMA controller
-	EDMA.CTRL = 0;                                  /* Disable EDMA controller so we can update it */
-	EDMA.CTRL = EDMA_RESET_bm;                      /* Reset the EDMA controller */
-	EDMA.CTRL = EDMA_CHMODE_STD0_gc;                /* Configure for 1 standard (CH0) and 2 peripheral (CH2-3) channels */
-	EDMA.CTRL |= EDMA_ENABLE_bm;                    /* Enable the EDMA controller */
+	EDMA.CTRL = 0;                      /* Disable EDMA controller so we can update it */
+	EDMA.CTRL = EDMA_RESET_bm;          /* Reset the EDMA controller */
+	EDMA.CTRL = EDMA_CHMODE_STD0_gc;    /* Configure for 1 standard (CH0) and 2 peripheral (CH2-3) channels */
+	EDMA.CTRL |= EDMA_ENABLE_bm;        /* Enable the EDMA controller */
 		
 	// Configure DMA Standard Channel 0 for rxbuff to unibuff transfer */
 	EDMA.CH0.ADDRCTRL = EDMA_CH_RELOAD_TRANSACTION_gc | EDMA_CH_DIR_INC_gc; /* Increment source pointer during transfer and reset after transaction */
@@ -107,10 +113,27 @@ void init() {
 	EDMA.CH0.ADDR = (uint16_t)rxbuff;                                       /* Source address is rxbuff[] */
 	EDMA.CH0.DESTADDR = (uint16_t)unibuff;                                  /* Destination address is unibuff[] */
 	
+    // Configure DMA Peripheral Channel 2 for USART Pixel TX
+    EDMA.CH2.CTRLA = EDMA_CH_SINGLE_bm;                                     /* Enable Single-Shot data transfer */
+    EDMA.CH2.ADDRCTRL = EDMA_CH_RELOAD_TRANSACTION_gc | EDMA_CH_DIR_INC_gc; /* Reload address after transaction, increment pointer */
+    EDMA.CH2.TRIGSRC = EDMA_CH_TRIGSRC_USARTD0_DRE_gc;                      /* Use USARTD0 DRE as DMA trigger */
+    EDMA.CH2.ADDR = (uint16_t)unibuff;                                      /* Set source address to unibuff[] */
+    if (channel_count < 256) {                                              /* Set transfer count and repeat flag based on channel_count */
+        EDMA.CH2.TRFCNT = (uint8_t)channel_count;
+    } else if (channel_count == 256) {
+        EDMA.CH2.TRFCNT = 0;        
+    } else if (channel_count == 512 ) {
+        EDMA.CH2.TRFCNT = 0;
+        EDMA.CH2.CTRLA |= EDMA_CH_REPEAT_bm;
+    } else if (channel_count > 256) {
+        EDMA.CH2.TRFCNT = (uint8_t)((channel_count/2)+(channel_count%2));   //TODO: This will transmit an extra channel for odd channel counts
+        EDMA.CH2.CTRLA |= EDMA_CH_REPEAT_bm;
+    }
+        
     // Configure the nRF radio
     xnrf_init(&xnrf_config, &xspi_config);                  /* Initialize the XNRF driver */
-    xnrf_set_channel(&xnrf_config, NRF_CHANNEL);            /* Set our channel */
-    xnrf_set_datarate(&xnrf_config, NRF_RATE);              /* Set our data rate */
+    xnrf_set_channel(&xnrf_config, nrf_channel);            /* Set our channel */
+    xnrf_set_datarate(&xnrf_config, nrf_rate);              /* Set our data rate */
     xnrf_write_register(&xnrf_config, EN_AA, 0);            /* Disable auto ack's */
     xnrf_write_register(&xnrf_config, SETUP_RETR, 0);       /* Disable auto retries */
     xnrf_write_register(&xnrf_config, EN_RXADDR, 3);        /* Listen on pipes 0 & 1 */
@@ -140,12 +163,11 @@ ISR(PORTC_INT_vect) {
     xnrf_write_register(&xnrf_config, NRF_STATUS, (1 << RX_DR));        /* Reset nRF RX_DR status */
 
 	//TODO: Add check for command byte
-	offset = rxbuff[RFSC_FRAME] * RFSC_FRAME;                   /* Set offset according to frame byte */
-	EDMA.CH0.DESTADDR = (uint16_t)unibuff + offset;             /* Set DMA CH0 destination address to correct offset for this frame */
+	EDMA.CH0.DESTADDR = (uint16_t)unibuff +
+            (rxbuff[RFSC_FRAME] * RFSC_FRAME);                  /* Set DMA CH0 destination address to correct offset for this frame */
 	EDMA.CH0.CTRLA |= EDMA_CH_ENABLE_bm | EDMA_CH_TRFREQ_bm;    /* Enable and trigger DMA channel 0 */
     PORTC.INTFLAGS = PIN3_bm;                                   /* Clear interrupt flag for PC3 */
 
-	DFLAG = true;   /* Set our Data-Ready flag */
 	DATA_LED_OFF;
  }
 
@@ -183,23 +205,10 @@ void setup_ws2811() {
 	XCL.CTRLD = 0b10100000;                                                     /* Truth Tables - Ignore 0 since its a MUX. Setup LUT1 to pass IN2. */
 	
 	/* Blank the universe */
-	uint16_t channel = channels;
+	uint16_t channel = channel_count;
 	while (channel--)
-		xusart_putchar(xusart_config.usart, 0);
+		xusart_putchar(xusart_config.usart, 0x00);
 	WS2811_RESET;
-}
-
-/* Configure DMA channels */
-void setup_dma() {
-	// Configure DMA Peripheral Channel for USART Pixel TX
-//	EDMA.CH2.CTRLA = EDMA_CH_SINGLE_bm;                                     /* Enable Single-Shot data transfer */
-//	EDMA.CH2.ADDRCTRL = EDMA_CH_RELOAD_TRANSACTION_gc | EDMA_CH_DIR_INC_gc; /* Reload address after transaction, increment pointer */
-//	EDMA.CH2.TRIGSRC = EDMA_CH_TRIGSRC_USARTD0_DRE_gc;                      /* Use USARTD0 DRE as DMA trigger */
-//	EDMA.CH2.TRFCNT = channels;                                             /* Set transfer count size */
-//	EDMA.CH2.ADDR = (uint16_t)rxbuff;                                       /* Set buffer address */
-
-	// Enable DMA Channels
-	//EDMA.CH2.CTRLA |= EDMA_CH_ENABLE_bm;  /* Enable USART TX channel */
 }
 
 /* Pulse entire universe full white - ignore configured channel count */
@@ -219,30 +228,33 @@ void identify() {
 	}
 }
 
+//TODO: Future error handling / feedback function
+void error(uint8_t code) {
+    
+}
+
 int main(void) {
-    init();             /* Initialize the board */
+    // Initialize the board
+    init();
 	
-	//TODO: Add logic to setup based on pixel type. Right now, we're only ws2811
-	setup_ws2811();     /* Configure for WS2811 output */
+    // Finish configuration based on our pixel type
+    switch (pixel_type) {
+        case PT_WS2811:         /* Configure for WS2811 output */
+            setup_ws2811(); 
+            break;
+        default:
+            error(0);
+    }        
 	
 	// Enable global interrupts and start listening
-	sei();                      /* Enable global interrupt flag */
-	xnrf_enable(&xnrf_config);  /* Start listening on nRF */
-	
-	//identify();
+	sei();                          /* Enable global interrupt flag */
+	xnrf_enable(&xnrf_config);      /* Start listening on nRF */
 
-
+	STATUS_LED_ON;	
 	while(1) {
-		//TODO:  This should trigger on completion of DMA Channel - rxbuff->unibuff transfer complete
-		while(!DFLAG);      /* Spin our wheels until we have a new packet */
-		DFLAG = false;      /* Clear the flag */
-		STATUS_LED_ON;
-
-		//while(!(EDMA.CH0.CTRLB & EDMA_CH_TRNIF_bm));
-		//EDMA.CH0.CTRLB = EDMA_CH_TRNIF_bm;
-
-		for (uint16_t i = CHANNEL_START; i < channels; i++)
-			xusart_putchar(xusart_config.usart, unibuff[i]);    /* Send the channel data */
-		STATUS_LED_OFF;
+        //TODO:  Polling for now. Move to interrupt?
+        while(!(EDMA.CH0.CTRLB & EDMA_CH_TRNIF_bm));    /* Wait until we have a packet transfered into unibuff */
+        EDMA.CH0.CTRLB |= EDMA_CH_TRNIF_bm;             /* Clear the Transaction Complete interrupt flag */
+        EDMA.CH2.CTRLA |= EDMA_CH_ENABLE_bm;            /* Enable USART TX DMA channel to send the pixel stream */
 	}
 }

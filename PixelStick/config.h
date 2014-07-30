@@ -26,6 +26,7 @@
 //TODO: Add error checking and status LED feedback for verification of these values
 #define PIXEL_NUM 28                /* default number of pixels */
 #define PIXEL_SIZE 3                /* default number of channels per pixel */
+#define PIXEL_TYPE PT_WS2811        /* default Pixel type */
 #define CHANNEL_START 0             /* default start channel */
 #define NRF_CHANNEL 100             /* default nRF channel */
 #define NRF_RATE    XNRF_250KBPS    /* default nRF data rate */
@@ -53,9 +54,15 @@
  *                    |____________ RESERVED - Only '0' allowed
  */
 
-/* RFShowControl Protocol */
+/* RFShowControl v0.3 Protocol */
 #define RFSC_FRAME  30  /* Offset for FRAME byte in RFSC Protocol */
 #define RFSC_CMD    31  /* Offset for COMMAND byte - proposed */ 
+
+/* Pixel Types */
+typedef enum {
+    PT_WS2811,
+    PT_WS2801
+} pixel_type_t;
 
 /* WS2811 */
 #define WS2811_BAUDRATE 800000

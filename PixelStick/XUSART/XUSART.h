@@ -21,7 +21,9 @@
 #define XUSART_H_
 
 #include "../config.h"
-#include "../RingBuffer.h"
+#ifdef RINGBUFFER
+#   include "../RingBuffer.h"
+#endif
 #include <avr/io.h>
 #include <stdbool.h>
 
@@ -128,26 +130,27 @@ static inline void xusart_get_packet(USART_t *usart, uint8_t *data, uint8_t len)
         *data++ = xusart_getchar(usart);
 }
 
-/*! \brief Sends all the contents of a RingBuffer object.
- *  \param usart    Pointer to USART_t module structure.
- *  \param buffer   Pointer to a RingBuffer structure that contains our data.
-  */
-static inline void xusart_send_buffer(USART_t *usart, RingBuff_t *buffer) {
-    uint8_t len = RingBuffer_GetCount(buffer);
-    while (len--)
-        xusart_putchar(usart, RingBuffer_Remove(buffer));
-}
+#ifdef RINGBUFFER
+    /*! \brief Sends all the contents of a RingBuffer object.
+     *  \param usart    Pointer to USART_t module structure.
+     *  \param buffer   Pointer to a RingBuffer structure that contains our data.
+      */
+    static inline void xusart_send_buffer(USART_t *usart, RingBuffer_t *buffer) {
+        uint8_t len = RingBuffer_GetCount(buffer);
+        while (len--)
+            xusart_putchar(usart, RingBuffer_Remove(buffer));
+    }
 
-/*! \brief Blocking call that retrieves a packet to a RingBuffer object.
- *  \param usart    Pointer to USART_t module structure.
- *  \param buffer   Pointer to a RingBuffer structure to hold our data.
- *  \param len      Size of the buffer in bytes.
- */
-static inline void xusart_get_buffer(USART_t *usart, RingBuff_t *buffer, uint8_t len) {
-    while (len--)
-        RingBuffer_Insert(buffer, xusart_getchar(usart));
-}
-
+    /*! \brief Blocking call that retrieves a packet to a RingBuffer object.
+     *  \param usart    Pointer to USART_t module structure.
+     *  \param buffer   Pointer to a RingBuffer structure to hold our data.
+     *  \param len      Size of the buffer in bytes.
+     */
+    static inline void xusart_get_buffer(USART_t *usart, RingBuffer_t *buffer, uint8_t len) {
+        while (len--)
+            RingBuffer_Insert(buffer, xusart_getchar(usart));
+    }
+#endif
 
 /************************************************************************/
 /* CALLED FUNCTIONS                                                     */
