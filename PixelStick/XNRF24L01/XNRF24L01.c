@@ -26,6 +26,7 @@ void xnrf_init(xnrf_config_t *xnrf_config, xspi_config_t *xspi_config) {
     // Initialize SPI to 4Mhz, assume a 32Mhz clock
     xnrf_config->ss_port->DIRSET = (1 << xnrf_config->ss_pin);
     xnrf_config->ce_port->DIRSET = (1 << xnrf_config->ce_pin);
+	xnrf_config->ss_port->OUTSET = (1 << xnrf_config->ss_pin);
     xspi_master_init(xspi_config, SPI_MODE_0_gc, false, SPI_PRESCALER_DIV16_gc, true);
 
     // Make sure our nRF is powered, disabled, and stabilized per the datasheet for power-on state transition.

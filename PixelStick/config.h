@@ -24,12 +24,12 @@
 /* USER Defined Defaults                         */
 /*************************************************/
 //TODO: Add error checking and status LED feedback for verification of these values
-#define PIXEL_NUM 28                /* default number of pixels */
+#define PIXEL_NUM 120               /* default number of pixels */
 #define PIXEL_SIZE 3                /* default number of channels per pixel */
 #define PIXEL_TYPE PT_WS2811        /* default Pixel type */
 #define CHANNEL_START 0             /* default start channel */
 #define NRF_CHANNEL 100             /* default nRF channel */
-#define NRF_RATE    XNRF_250KBPS    /* default nRF data rate */
+#define NRF_RATE    XNRF_1MBPS      /* default nRF data rate */
 
 
 /*************************************************/
@@ -54,9 +54,24 @@
  *                    |____________ RESERVED - Only '0' allowed
  */
 
-/* RFShowControl v0.3 Protocol */
-#define RFSC_FRAME  30  /* Offset for FRAME byte in RFSC Protocol */
-#define RFSC_CMD    31  /* Offset for COMMAND byte - proposed */ 
+/* RF Protocols */
+typedef enum {
+    RFPROTO_RFSCv03,        /* Komby's RFShowControl v0.3 protocol */
+    RFPROTO_RFSCv03a        /* Proposed Changes */
+} rf_proto_t;
+
+/* RFShowControl Protocol */
+#define RFSC_FRAME_SIZE 30      /* Size of a frame */
+#define RFSC_FRAME      30      /* Offset for FRAME byte in RFSC Protocol */
+#define RFSC_CMD        31      /* Offset for COMMAND byte - proposed */
+
+/* RFShowControl Command Bytes - proposed */
+#define RFSC_CMD_bm     0xE0    /* Bitmask for CMD in COMMAND byte */
+#define RFSC_SIZE_bm    0x1F    /* Bitmask for SIZE in COMMAND byte */
+#define RFSCMD_DATA     0x00    /* Channel Data */
+#define RFSCMD_CONFIG   0x01    /* Configuration Data */
+#define RFSCMD_DIAG     0x02    /* Diagnostic Data */
+#define RFSCMD_FLASH    0x03    /* OTA Flash Data */
 
 /* Pixel Types */
 typedef enum {

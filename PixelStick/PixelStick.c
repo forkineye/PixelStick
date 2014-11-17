@@ -26,12 +26,12 @@
 #include "XUSART/XUSART.h"
 #include "XNRF24L01/XNRF24L01.h"
 
-#define STATUS_LED_ON   PORTA.OUTSET = PIN5_bm
-#define STATUS_LED_OFF  PORTA.OUTCLR = PIN5_bm
-#define STATUS_LED_TGL  PORTA.OUTTGL = PIN5_bm
-#define DATA_LED_ON     PORTA.OUTSET = PIN6_bm
-#define DATA_LED_OFF    PORTA.OUTCLR = PIN6_bm
-#define DATA_LED_TGL    PORTA.OUTTGL = PIN6_bm
+#define LED_STATUS_ON   PORTA.OUTSET = PIN5_bm
+#define LED_STATUS_OFF  PORTA.OUTCLR = PIN5_bm
+#define LED_STATUS_TGL  PORTA.OUTTGL = PIN5_bm
+#define LED_DATA_ON     PORTA.OUTSET = PIN6_bm
+#define LED_DATA_OFF    PORTA.OUTCLR = PIN6_bm
+#define LED_DATA_TGL    PORTA.OUTTGL = PIN6_bm
 
 /* XSPI configuration structure for nRF24L01 */
 xspi_config_t xspi_config = {
@@ -84,13 +84,9 @@ void init() {
 
     // Configure general IO
     PORTA.DIRSET = PIN5_bm | PIN6_bm;               /* Setup Status and DATA LEDs as outputs */
-    STATUS_LED_OFF;
-    DATA_LED_OFF;
+    LED_STATUS_OFF;
+    LED_DATA_OFF;
 	
-    //TODO: Pull buffer enable low.  Don't need on new boards
-    PORTD.DIRSET = PIN2_bm;
-    PORTD.OUTCLR = PIN2_bm;
-    
     //TODO: Load configuration from EEPROM here. For now, use defaults from config.h
     uint8_t nrf_channel = NRF_CHANNEL;
     uint8_t nrf_rate = NRF_RATE;
@@ -158,17 +154,17 @@ void init() {
  *   We'll pick and process our desired channels later during pixel stream generation.
  */
 ISR(PORTC_INT_vect) {
-    DATA_LED_ON;
+    LED_DATA_ON;
     xnrf_read_payload(&xnrf_config, rxbuff, xnrf_config.payload_width); /* Retrieve the payload */
     xnrf_write_register(&xnrf_config, NRF_STATUS, (1 << RX_DR));        /* Reset nRF RX_DR status */
 
     //TODO: Add check for command byte
     EDMA.CH0.DESTADDR = (uint16_t)unibuff +
-            (rxbuff[RFSC_FRAME] * RFSC_FRAME);                  /* Set DMA CH0 destination address to correct offset for this frame */
+            (rxbuff[RFSC_FRAME] * RFSC_FRAME_SIZE);             /* Set DMA CH0 destination address to correct offset for this frame */
     EDMA.CH0.CTRLA |= EDMA_CH_ENABLE_bm | EDMA_CH_TRFREQ_bm;    /* Enable and trigger DMA channel 0 */
     PORTC.INTFLAGS = PIN3_bm;                                   /* Clear interrupt flag for PC3 */
 
-    DATA_LED_OFF;
+    LED_DATA_OFF;
  }
 
 /* Setup a WS2811 data stream using TC4, XCL, and USARTD0 */
@@ -218,12 +214,12 @@ void identify() {
     while(1) {
         i = 512; while (i--)
             xusart_putchar(xusart_config.usart, 0xFF);
-        STATUS_LED_ON;
+        LED_STATUS_ON;
         _delay_ms(250);
 
         i = 512; while (i--)
             xusart_putchar(xusart_config.usart, 0x00);
-        STATUS_LED_OFF;
+        LED_STATUS_OFF;
         _delay_ms(250);
     }
 }
@@ -250,11 +246,13 @@ int main(void) {
     sei();                          /* Enable global interrupt flag */
     xnrf_enable(&xnrf_config);      /* Start listening on nRF */
 
-    STATUS_LED_ON;	
+    LED_STATUS_ON;	
     while(1) {
         //TODO:  Polling for now. Move to interrupt?
         while(!(EDMA.CH0.CTRLB & EDMA_CH_TRNIF_bm));    /* Wait until we have a packet transfered into unibuff */
         EDMA.CH0.CTRLB |= EDMA_CH_TRNIF_bm;             /* Clear the Transaction Complete interrupt flag */
-        EDMA.CH2.CTRLA |= EDMA_CH_ENABLE_bm;            /* Enable USART TX DMA channel to send the pixel stream */
+//        WS2811_RESET;
+        EDMA.CH2.CTRLA |= EDMA_CH_ENABLE_bm | EDMA_CH_REPEAT_bm;            /* Enable USART TX DMA channel to send the pixel stream */
+//        EDMA.CH2.CTRLB |= EDMA_CH_TRNIF_bm;
     }
 }
