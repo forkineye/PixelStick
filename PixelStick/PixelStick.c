@@ -20,6 +20,7 @@
 #include "config.h"
 #include <avr/io.h>
 #include <avr/interrupt.h>
+#include <util/atomic.h>
 #include <util/delay.h>
 #include <stdbool.h>
 #include <string.h>
@@ -65,11 +66,19 @@ xusart_config_t xusart_config = {
 
 uint64_t addr_p0 = ADDR_P0;         /* default nRF address for TX and Pipe 0 RX */
 uint64_t addr_p1 = ADDR_P1;         /* default nRF address for Pipe 1 RX */    
-volatile uint8_t rxbuff[32];        /* Packet buffer */
-volatile uint8_t unibuff[512];      /* Universe buffer */
-volatile uint16_t channel_start;    /* Start channel for this PixelStick */
-volatile uint16_t channel_count;    /* Total number of channels */
+volatile uint8_t rxbuff1[32];       /* RX Buffer 1 */
+volatile uint8_t rxbuff2[32];       /* RX Buffer 2 */
+volatile uint8_t *rxbuff = rxbuff1; /* Current RX buffer Pointer */
+volatile uint8_t *pbuff = rxbuff2;  /* Current Parse buffer pointer */
+volatile uint8_t pixelbuff[512];    /* Pixel buffer */
+uint16_t channel_start;             /* Start channel for this PixelStick - 0 based */
+uint16_t channel_count;             /* Total number of channels */
+volatile uint8_t frame_first;       /* Calculated first frame for this PixelStick  - 0 based */
+volatile uint8_t frame_last;        /* Calculated last frame for this PixelStick */
+
 pixel_type_t pixel_type;            /* Pixel Type */
+pixel_order_t pixel_order;          /* Pixel Color Order */
+volatile bool DFLAG;                /* Data Ready flag */
 
 /* Initialize the board */
 void init() {
@@ -93,8 +102,12 @@ void init() {
     uint8_t pixel_num = PIXEL_NUM;
     uint8_t pixel_size = PIXEL_SIZE;
     pixel_type = PIXEL_TYPE;
+    pixel_order = PIXEL_ORDER;
     channel_start = CHANNEL_START;
     channel_count = pixel_num * pixel_size;
+    
+    frame_first = channel_start / RFSC_FRAME_SIZE;
+    frame_last = frame_first + (channel_count / RFSC_FRAME_SIZE);
 	
     // Configure the DMA controller
     EDMA.CTRL = 0;                      /* Disable EDMA controller so we can update it */
@@ -102,18 +115,11 @@ void init() {
     EDMA.CTRL = EDMA_CHMODE_STD0_gc;    /* Configure for 1 standard (CH0) and 2 peripheral (CH2-3) channels */
     EDMA.CTRL |= EDMA_ENABLE_bm;        /* Enable the EDMA controller */
 		
-    // Configure DMA Standard Channel 0 for rxbuff to unibuff transfer */
-    EDMA.CH0.ADDRCTRL = EDMA_CH_RELOAD_TRANSACTION_gc | EDMA_CH_DIR_INC_gc; /* Increment source pointer during transfer and reset after transaction */
-    EDMA.CH0.DESTADDRCTRL = EDMA_CH_DIR_INC_gc;                             /* Increment destination pointer during transfer */
-    EDMA.CH0.TRFCNT = 30;                                                   /* Transfer 30 bytes per transaction */
-    EDMA.CH0.ADDR = (uint16_t)rxbuff;                                       /* Source address is rxbuff[] */
-    EDMA.CH0.DESTADDR = (uint16_t)unibuff;                                  /* Destination address is unibuff[] */
-	
     // Configure DMA Peripheral Channel 2 for USART Pixel TX
     EDMA.CH2.CTRLA = EDMA_CH_SINGLE_bm;                                     /* Enable Single-Shot data transfer */
     EDMA.CH2.ADDRCTRL = EDMA_CH_RELOAD_TRANSACTION_gc | EDMA_CH_DIR_INC_gc; /* Reload address after transaction, increment pointer */
     EDMA.CH2.TRIGSRC = EDMA_CH_TRIGSRC_USARTD0_DRE_gc;                      /* Use USARTD0 DRE as DMA trigger */
-    EDMA.CH2.ADDR = (uint16_t)unibuff;                                      /* Set source address to unibuff[] */
+    EDMA.CH2.ADDR = (uint16_t)pixelbuff;                                    /* Set source address to unibuff[] */
     if (channel_count < 256) {                                              /* Set transfer count and repeat flag based on channel_count */
         EDMA.CH2.TRFCNT = (uint8_t)channel_count;
     } else if (channel_count == 256) {
@@ -144,26 +150,27 @@ void init() {
     PMIC.CTRL |= PMIC_LOLVLEN_bm;           /* Enable low interrupts */
 
     // Initialize listening on nRF.
+    DFLAG = false;
     xnrf_config_rx(&xnrf_config);   /* Configure nRF for RX mode */
     xnrf_powerup(&xnrf_config);     /* Power-up the nRF */
     _delay_ms(5);                   /* Let the radio stabilize - Section 6.1.7 - Tpd2stdby */
 }
 
 /* Interrupt handler for nRF hardware interrupt on PC3
- * - This grabs an entire RF24 packet and puts the full universe in the buffer.
- *   We'll pick and process our desired channels later during pixel stream generation.
+ * - This checks for a Frame that we're interested in and sets DFLAG to trigger processing.
  */
 ISR(PORTC_INT_vect) {
     LED_DATA_ON;
     xnrf_read_payload(&xnrf_config, rxbuff, xnrf_config.payload_width); /* Retrieve the payload */
     xnrf_write_register(&xnrf_config, NRF_STATUS, (1 << RX_DR));        /* Reset nRF RX_DR status */
-
+    
     //TODO: Add check for command byte
-    EDMA.CH0.DESTADDR = (uint16_t)unibuff +
-            (rxbuff[RFSC_FRAME] * RFSC_FRAME_SIZE);             /* Set DMA CH0 destination address to correct offset for this frame */
-    EDMA.CH0.CTRLA |= EDMA_CH_ENABLE_bm | EDMA_CH_TRFREQ_bm;    /* Enable and trigger DMA channel 0 */
-    PORTC.INTFLAGS = PIN3_bm;                                   /* Clear interrupt flag for PC3 */
+        
+    // Set data ready flag to process the new buffer from rxbuff to pixelbuff
+    if ((rxbuff[RFSC_FRAME] >= frame_first) && (rxbuff[RFSC_FRAME] <= frame_last))
+        DFLAG = true;
 
+    PORTC.INTFLAGS = PIN3_bm;   /* Clear interrupt flag for PC3 */
     LED_DATA_OFF;
  }
 
@@ -230,6 +237,8 @@ void error(uint8_t code) {
 }
 
 int main(void) {
+//    uint8_t frame;
+    
     // Initialize the board
     init();
 	
@@ -248,11 +257,29 @@ int main(void) {
 
     LED_STATUS_ON;	
     while(1) {
-        //TODO:  Polling for now. Move to interrupt?
-        while(!(EDMA.CH0.CTRLB & EDMA_CH_TRNIF_bm));    /* Wait until we have a packet transfered into unibuff */
-        EDMA.CH0.CTRLB |= EDMA_CH_TRNIF_bm;             /* Clear the Transaction Complete interrupt flag */
+        while(!DFLAG);                      /* Poll until we have new data to process */
+        ATOMIC_BLOCK(ATOMIC_FORCEON) {      /* Clear the data flag and swap our buffers */
+            DFLAG = false;
+            volatile uint8_t *swap = pbuff;
+            pbuff = rxbuff;
+            rxbuff = swap;
+        }
+        
+        uint8_t frame = pbuff[RFSC_FRAME];  /* The frame for this buffer */
+        uint8_t start = 0;                  /* Start index for copying pbuff */
+        uint8_t stop = RFSC_FRAME_SIZE;     /* Stop index for copying pbuff */
+        
+        if (frame == frame_first)           /* Shift start index for first frame */
+            start = channel_start - (frame * RFSC_FRAME_SIZE);
+        if (frame == frame_last)            /* Shift stop iendex for last frame */
+            stop = channel_count - (frame * RFSC_FRAME_SIZE);
+        
+        //TODO: Add support for different color orders when copying to pixelbuff
+        uint16_t channel = (frame * RFSC_FRAME_SIZE) + start - channel_start;
+        for (uint8_t i = start; i < stop; i++)
+            pixelbuff[channel++] = pbuff[i];
+       
 //        WS2811_RESET;
         EDMA.CH2.CTRLA |= EDMA_CH_ENABLE_bm | EDMA_CH_REPEAT_bm;            /* Enable USART TX DMA channel to send the pixel stream */
-//        EDMA.CH2.CTRLB |= EDMA_CH_TRNIF_bm;
     }
 }

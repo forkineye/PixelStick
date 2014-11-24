@@ -24,10 +24,12 @@
 /* USER Defined Defaults                         */
 /*************************************************/
 //TODO: Add error checking and status LED feedback for verification of these values
-#define PIXEL_NUM 120               /* default number of pixels */
+#define CHANNEL_START 0             /* default start channel - 0 based */
+#define PIXEL_NUM 170               /* default number of pixels */
 #define PIXEL_SIZE 3                /* default number of channels per pixel */
 #define PIXEL_TYPE PT_WS2811        /* default Pixel type */
-#define CHANNEL_START 0             /* default start channel */
+#define PIXEL_ORDER PO_RGB          /* default Pixel color order */
+
 #define NRF_CHANNEL 100             /* default nRF channel */
 #define NRF_RATE    XNRF_1MBPS      /* default nRF data rate */
 
@@ -78,6 +80,12 @@ typedef enum {
     PT_WS2811,
     PT_WS2801
 } pixel_type_t;
+
+/* Pixel Color Order */
+typedef enum {
+    PO_RGB,
+    PO_RBG
+} pixel_order_t;
 
 /* WS2811 */
 #define WS2811_BAUDRATE 800000
