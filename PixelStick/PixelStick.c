@@ -107,7 +107,7 @@ void init() {
     channel_count = pixel_num * pixel_size;
     
     frame_first = channel_start / RFSC_FRAME_SIZE;
-    frame_last = frame_first + (channel_count / RFSC_FRAME_SIZE);
+    frame_last = (channel_start + channel_count) / RFSC_FRAME_SIZE;
 	
     // Configure the DMA controller
     EDMA.CTRL = 0;                      /* Disable EDMA controller so we can update it */
@@ -211,6 +211,7 @@ void setup_ws2811() {
     uint16_t channel = channel_count;
     while (channel--)
         xusart_putchar(xusart_config.usart, 0x00);
+        
     WS2811_RESET;
 }
 
@@ -258,28 +259,30 @@ int main(void) {
     LED_STATUS_ON;	
     while(1) {
         while(!DFLAG);                      /* Poll until we have new data to process */
-        ATOMIC_BLOCK(ATOMIC_FORCEON) {      /* Clear the data flag and swap our buffers */
+        ATOMIC_BLOCK(ATOMIC_FORCEON) {      /* Swap our buffers */
             DFLAG = false;
             volatile uint8_t *swap = pbuff;
             pbuff = rxbuff;
             rxbuff = swap;
         }
-        
+
         uint8_t frame = pbuff[RFSC_FRAME];  /* The frame for this buffer */
         uint8_t start = 0;                  /* Start index for copying pbuff */
         uint8_t stop = RFSC_FRAME_SIZE;     /* Stop index for copying pbuff */
         
         if (frame == frame_first)           /* Shift start index for first frame */
             start = channel_start - (frame * RFSC_FRAME_SIZE);
-        if (frame == frame_last)            /* Shift stop iendex for last frame */
-            stop = channel_count - (frame * RFSC_FRAME_SIZE);
-        
+        if (frame == frame_last)            /* Shift stop index for last frame */
+            stop = (channel_start + channel_count) - (frame * RFSC_FRAME_SIZE);
+    
         //TODO: Add support for different color orders when copying to pixelbuff
         uint16_t channel = (frame * RFSC_FRAME_SIZE) + start - channel_start;
+
         for (uint8_t i = start; i < stop; i++)
             pixelbuff[channel++] = pbuff[i];
-       
-//        WS2811_RESET;
-        EDMA.CH2.CTRLA |= EDMA_CH_ENABLE_bm | EDMA_CH_REPEAT_bm;            /* Enable USART TX DMA channel to send the pixel stream */
+
+        /* Was updating too quickly, so only update after we have a full stream.  Need to test for packet loss / add trigger */
+        if (frame == frame_last)
+            EDMA.CH2.CTRLA |= EDMA_CH_ENABLE_bm | EDMA_CH_REPEAT_bm;    /* Enable USART TX DMA channel to send the pixel stream */
     }
 }
