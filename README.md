@@ -1,5 +1,4 @@
-### NOTE: 
-I doubt I'll do anymore develpoment on this project as my current focus is an ESP8266 based replacement which is here - https://github.com/forkineye/ESPixelStick
+### NOTE - I doubt I'll do anymore develpoment on this project as my current focus is an ESP8266 based replacement which is here - https://github.com/forkineye/ESPixelStick
 
 
 
